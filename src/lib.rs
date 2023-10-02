@@ -1,3 +1,5 @@
+use std::{rc::Rc, cell::RefCell};
+
 pub fn add(left: usize, right: usize) -> usize {
     left + right
 }
@@ -50,6 +52,23 @@ pub trait Beeper {
 pub trait Timer {
     fn set(val:u8);
     fn get() -> u8;
+}
+
+// going with trait objects might be a better depending on what exactly I want to do with the GUI
+// I do not know wether the Rc<RefCell<_>> is really the right joice or even really necessary at this point
+pub struct State<D: Display, K: Keypad, B: Beeper, T: Timer>{
+    memory: Vec<u8>,
+    // u16 should be enough for the usual 4k, but usize should be better for indexing the memory vector
+    pc: usize,
+    index_reg: u16,
+    stack: Vec<u16>,
+    // the 16 general purpose registers
+    gp_registers: [u8; 16],
+
+    display: Rc<RefCell<D>>,
+    delay_timer: Rc<RefCell<T>>,
+    sound_timer: Rc<RefCell<B>>,
+    keypad: Rc<RefCell<K>>,
 }
 
 #[cfg(test)]
