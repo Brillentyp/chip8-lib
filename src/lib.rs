@@ -19,7 +19,7 @@ pub trait Display {
     /// * 'x' - x display start position
     /// * 'y' - y display start position
     ///  
-    fn modify(&self, sprite: &[u8], x:u8, y:u8) -> bool;
+    fn modify(&mut self, sprite: &[u8], x:u8, y:u8) -> bool;
 }
 
 ///
@@ -29,7 +29,7 @@ pub trait Display {
 pub trait Keypad {
     ///
     /// Returns `Some<_>` if a key is *currently* pressed, `None` otherwise. The Some contains the pressed key as an `u8` (0x0 .. 0xF)
-    fn get_pressed_key() -> Option<u8>;
+    fn get_pressed_key(&self) -> Option<u8>;
 }
 
 pub trait Beeper {
@@ -50,8 +50,8 @@ pub trait Beeper {
 /// 
 /// For further details see: <https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#timers.>
 pub trait Timer {
-    fn set(val:u8);
-    fn get() -> u8;
+    fn set(&mut self, val:u8);
+    fn get(&self) -> u8;
 }
 
 // going with trait objects might be a better depending on what exactly I want to do with the GUI
