@@ -72,6 +72,52 @@ pub struct State{
     keypad: Rc<RefCell<dyn Keypad>>,
 }
 
+
+
+// Some mock structs for testing and debugging
+// ----------------------------------------------------------------
+struct DebugDisplay{
+    ret: bool
+}
+impl Display for DebugDisplay {
+    fn modify(&mut self, sprite: &[u8], x:u8, y:u8) -> bool {
+        self.ret
+    }
+}
+
+struct DebugKepad{
+    currently_pressed: Option<u8>
+}
+impl Keypad for DebugKepad {
+    fn get_pressed_key(&self) -> Option<u8> {
+        self.currently_pressed
+    }
+}
+
+struct DebugBeeper{
+    value: u8
+}
+impl Beeper for DebugBeeper {
+    fn start(&mut self, time:u8) {
+        self.value = time;
+    }
+}
+
+struct DebugTimer{
+    value: u8
+}
+impl Timer for DebugTimer {
+    fn get(&self) -> u8 {
+        self.value
+    }
+
+    fn set(&mut self, val:u8) {
+        self.value = val;
+    }
+}
+
+// ----------------------------------------------------------------
+
 impl State {
     fn new(display: Rc<RefCell<dyn Display>>, delay_timer: Rc<RefCell<dyn Timer>>, sound_timer: Rc<RefCell<dyn Beeper>>, keypad: Rc<RefCell<dyn Keypad>>,) -> Self{
         State { memory: Vec::with_capacity(MEM_SIZE), pc: 0, index_reg: 0, stack: Vec::new(), gp_registers: [0; 16], display: display, delay_timer: delay_timer, sound_timer: sound_timer, keypad: keypad }
