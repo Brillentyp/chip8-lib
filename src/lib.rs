@@ -1,5 +1,7 @@
 use std::{rc::Rc, cell::RefCell};
 
+const MEM_SIZE: usize = 0xFFF + 1; // 4KiB
+
 pub fn add(left: usize, right: usize) -> usize {
     left + right
 }
@@ -42,7 +44,7 @@ pub trait Beeper {
     /// 
     /// * 'time' - value that the internal counter is initialized with
     /// 
-    fn start(&self, time:u8);
+    fn start(&mut self, time:u8);
 }
 
 /// The chip8 timer is a 8-Bit timer that decrements its internal value 60 times a second. Chip8 has two timers. 
@@ -54,9 +56,8 @@ pub trait Timer {
     fn get(&self) -> u8;
 }
 
-// going with trait objects might be a better depending on what exactly I want to do with the GUI
-// I do not know wether the Rc<RefCell<_>> is really the right joice or even really necessary at this point
-pub struct State<D: Display, K: Keypad, B: Beeper, T: Timer>{
+// choosing trait objects to make gui stuff easier
+pub struct State{
     memory: Vec<u8>,
     // u16 should be enough for the usual 4k, but usize should be better for indexing the memory vector
     pc: usize,
@@ -65,12 +66,29 @@ pub struct State<D: Display, K: Keypad, B: Beeper, T: Timer>{
     // the 16 general purpose registers
     gp_registers: [u8; 16],
 
-    display: Rc<RefCell<D>>,
-    delay_timer: Rc<RefCell<T>>,
-    sound_timer: Rc<RefCell<B>>,
-    keypad: Rc<RefCell<K>>,
+    display: Rc<RefCell<dyn Display>>,
+    delay_timer: Rc<RefCell<dyn Timer>>,
+    sound_timer: Rc<RefCell<dyn Beeper>>,
+    keypad: Rc<RefCell<dyn Keypad>>,
 }
 
+impl State {
+    fn new(display: Rc<RefCell<dyn Display>>, delay_timer: Rc<RefCell<dyn Timer>>, sound_timer: Rc<RefCell<dyn Beeper>>, keypad: Rc<RefCell<dyn Keypad>>,) -> Self{
+        State { memory: Vec::with_capacity(MEM_SIZE), pc: 0, index_reg: 0, stack: Vec::new(), gp_registers: [0; 16], display: display, delay_timer: delay_timer, sound_timer: sound_timer, keypad: keypad }
+    }
+
+    fn initialize(&mut self, program: &[u8], font: &[u8]){
+
+        // for compatibility reasons the program should be loaded after address 0x200, do not forget to update the pc
+        // font should be located before the program in memory, just at 0? 
+        todo!();
+    }
+
+    // execute the next instruction located at pc
+    fn excute() {
+        todo!();
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
