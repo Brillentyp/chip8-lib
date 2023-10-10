@@ -2,6 +2,30 @@ use std::{rc::Rc, cell::RefCell};
 
 const MEM_SIZE: usize = 0xFFF + 1; // 4KiB
 
+// it is apparently popular to put the font at 050–09F ... so I will do that as well
+const FONT_START: usize = 0x50;
+
+// for compability with older programs
+const PROGRAM_START: usize = 0x200;
+
+pub const DEFAULT_FONT: [u8; 80] = [0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
+                                    0x20, 0x60, 0x20, 0x20, 0x70, // 1
+                                    0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
+                                    0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+                                    0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+                                    0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+                                    0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+                                    0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+                                    0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+                                    0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+                                    0xF0, 0x90, 0xF0, 0x90, 0x90, // A
+                                    0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
+                                    0xF0, 0x80, 0x80, 0x80, 0xF0, // C
+                                    0xE0, 0x90, 0x90, 0x90, 0xE0, // D
+                                    0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
+                                    0xF0, 0x80, 0xF0, 0x80, 0x80  // F
+                                   ];
+
 pub fn add(left: usize, right: usize) -> usize {
     left + right
 }
@@ -120,18 +144,29 @@ impl Timer for DebugTimer {
 
 impl State {
     fn new(display: Rc<RefCell<dyn Display>>, delay_timer: Rc<RefCell<dyn Timer>>, sound_timer: Rc<RefCell<dyn Beeper>>, keypad: Rc<RefCell<dyn Keypad>>,) -> Self{
-        State { memory: Vec::with_capacity(MEM_SIZE), pc: 0, index_reg: 0, stack: Vec::new(), gp_registers: [0; 16], display: display, delay_timer: delay_timer, sound_timer: sound_timer, keypad: keypad }
+        State { memory: Vec::with_capacity(MEM_SIZE), pc: 0, index_reg: 0, stack: Vec::new(), gp_registers: [0; 16], display, delay_timer, sound_timer, keypad }
     }
 
     fn initialize(&mut self, program: &[u8], font: &[u8]){
 
-        // for compatibility reasons the program should be loaded after address 0x200, do not forget to update the pc
-        // font should be located before the program in memory, just at 0? 
+        // load program into memory
+        let program_start = 0x200;
+        for i in 0..program.len(){
+            self.memory[program_start + 1] = program[i];
+        }
+        self.pc = program_start;
+        
+        
+        for i in 0..font.len(){
+            self.memory[FONT_START + i] = font[i];
+        }
+
+
         todo!();
     }
 
     // execute the next instruction located at pc
-    fn excute() {
+    fn execute() {
         todo!();
     }
 }
