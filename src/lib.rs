@@ -51,6 +51,7 @@ pub trait Display {
 
     fn width(&self) -> usize;
     fn height(&self) -> usize;
+    fn clear(&mut self);
 }
 
 ///
@@ -122,6 +123,10 @@ impl Display for DebugDisplay {
 
     fn width(&self) -> usize {
         self.width
+    }
+
+    fn clear(&mut self) {
+        return;
     }
 }
 
@@ -247,6 +252,10 @@ impl Display for DisplayBuffer {
 
     fn width(&self) -> usize {
         self.display_width
+    }
+
+    fn clear(&mut self) {
+        self.display.fill(false);
     }
 }
 // ----------------------------------------------------------------
