@@ -354,3 +354,79 @@ mod tests {
         assert_eq!(array, [true, true, true, true, true, true, true, true]);
     }
 }
+
+// Mnemonics are (mostly) taken from: http://www.emulator101.com/chip-8-instruction-set.html
+// also https://en.wikipedia.org/wiki/CHIP-8
+enum Instruction{
+    // 0NNN, Instruction 0NNN calls a machine code routine (RCA 1802 for COSMAC VIP), I won't implement this instruction
+    // use Invalid for this Instruction
+    Invalid,
+    // 00E0, clear screen
+    Cls,
+    // 00EE, return from subroutine
+    Rts,
+    // 1NNN, absolute jump to NNN
+    Jump{nnn: u16},
+    // 2NNN, jump to subroutine at NNN (push address to stack, change pc)
+    Call{nnn: u16},
+    // 3XNN, skip next instruction if Vx equals NN
+    SkipEqConst{x:u8, nn:u8},
+    // 4XNN, skip next instruction if Vx does not equal NN
+    SkipNeqConst{x:u8, nn:u8},
+    // 5XY0, skips the next instruction if VX equals VY
+    SkipEq{x:u8, y:u8},
+    // 6XNN, Sets VX to NN. 
+    MovConst{x:u8, nn:u8},
+    // 7XNN, Adds NN to VX (carry flag is not changed)
+    AddConst{x:u8, nn:u8},
+    // 8XY0, Sets VX to the value of VY. 
+    Mov{x:u8, y:u8},
+    // 8XY1, Sets VX to VX or VY. (bitwise OR operation) 
+    Or{x:u8, y:u8},
+    // 8XY2, Sets VX to VX and VY. (bitwise AND operation) 
+    And{x:u8, y:u8},
+    // 8XY3, Sets VX to VX xor VY
+    Xor{x:u8, y:u8},
+    // 8XY4, Adds VY to VX. VF is set to 1 when there's a carry, and to 0 when there is not. 
+    Add{x:u8, y:u8},
+    // 8XY5, VY is subtracted from VX. VF is set to 0 when there's a borrow, and 1 when there is not. 
+    SubFrom{x:u8, y:u8},
+    // 8XY6, Stores the least significant bit of VX in VF and then shifts VX to the right by 1 (ambiguous see chip8 guide)
+    RightShift{x:u8, y:u8},
+    // 8XY7, Sets VX to VY minus VX. VF is set to 0 when there's a borrow, and 1 when there is not. 
+    Sub{x:u8, y:u8},
+    // 8XYE, Stores the most significant bit of VX in VF and then shifts VX to the left by 1
+    LeftShift{x:u8, y:u8},
+    // 9XY0, Skips the next instruction if VX does not equal VY
+    SkipNeq{x:u8, y:u8},
+    // ANNN, Sets I to the address NNN
+    MovI{nnn:u16},
+    // BNNN, indexed jump, jump to NNN + V0
+    JumpIndexed{nnn: u16},
+    // CXNN, Sets VX to the result of a bitwise and operation on a random number (Typically: 0 to 255) and NN
+    Rand{x:u8, nn:u8},
+    // DXYN, Draws a sprite at coordinate (VX, VY) that has a width of 8 pixels and a height of N pixels. Each row of 8 pixels is read as bit-coded starting from memory location I; I value does not change after the execution of this instruction. VF will be set if a screen pixel was changed
+    DRAW{x:u8, y:u8, n:u8},
+    // EX9E, Skips the next instruction if the key stored in VX is pressed
+    SkipKeyEq{x:u8},
+    // EXA1, Skips the next instruction if the key stored in VX is not pressed
+    SkipKeyNeq{x:u8},
+    // FX07, Sets VX to the value of the delay timer
+    GetDelayTimer{x:u8},
+    // FX0A, A key press is awaited, and then stored in VX
+    WaitKey{x:u8},
+    // FX15, set delay timer to VX
+    SetDelayTimer{x:u8},
+    // FX18, Sets the sound timer to VX. 
+    SetSoundTimer{x:u8},
+    // FX1E, Adds VX to I. VF is not affected.
+    AddI{x:u8},
+    // FX29, Sets I to the location of the sprite for the character in VX. Characters 0-F (in hexadecimal) are represented by a 4x5 font.
+    SetFontI{x:u8},
+    // FX33, Stores the binary-coded decimal representation of VX, with the hundreds digit in memory at location in I, the tens digit at location I+1, and the ones digit at location I+2. 
+    BCD{x:u8},
+    // FX55, Stores from V0 to VX (including VX) in memory, starting at address I. The offset from I is increased by 1 for each value written, but I itself is left unmodified.
+    RegDump{x:u8},
+    // FX65, Fills from V0 to VX (including VX) with values from memory, starting at address I. The offset from I is increased by 1 for each value read, but I itself is left unmodified
+    RegLoad{x:u8},
+}
