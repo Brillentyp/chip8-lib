@@ -233,12 +233,12 @@ impl Display for DisplayBuffer {
                 if actual_x as usize + i < self.display_width {
                     let index =
                         actual_x as usize + i + self.display_width * (line + actual_y) as usize;
-
+                    let old = self.display[index];
                     // note that != is the same as a logical XOR
                     self.display[index] = self.display[index] != *b;
 
                     // if the bit was set a pixel was flipped
-                    if *b {
+                    if *b  && old{
                         result_flag = true;
                     }
                 }
