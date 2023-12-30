@@ -227,11 +227,12 @@ impl Display for DisplayBuffer {
                 // sprite should clip so we are finished
                 return result_flag;
             }
-            
+
             for (i, b) in line_bools.iter().enumerate() {
                 // drawing should clip
                 if actual_x as usize + i < self.display_width {
-                    let index = actual_x as usize + i + self.display_width * (line + actual_y) as usize;
+                    let index =
+                        actual_x as usize + i + self.display_width * (line + actual_y) as usize;
 
                     // note that != is the same as a logical XOR
                     self.display[index] = self.display[index] != *b;
@@ -357,7 +358,10 @@ mod tests {
         assert_eq!(array, [true, false, true, true, false, false, true, true]);
         let byte: u8 = 0b00000000;
         let array = u8_to_bool_array(byte);
-        assert_eq!(array, [false, false, false, false, false, false, false, false]);
+        assert_eq!(
+            array,
+            [false, false, false, false, false, false, false, false]
+        );
         let byte: u8 = 0b11111111;
         let array = u8_to_bool_array(byte);
         assert_eq!(array, [true, true, true, true, true, true, true, true]);
@@ -366,7 +370,7 @@ mod tests {
 
 // Mnemonics are (mostly) taken from: http://www.emulator101.com/chip-8-instruction-set.html
 // also https://en.wikipedia.org/wiki/CHIP-8
-enum Instruction{
+enum Instruction {
     // 0NNN, Instruction 0NNN calls a machine code routine (RCA 1802 for COSMAC VIP), I won't implement this instruction
     // use Invalid for this Instruction
     Invalid,
@@ -375,67 +379,265 @@ enum Instruction{
     // 00EE, return from subroutine
     Rts,
     // 1NNN, absolute jump to NNN
-    Jump{nnn: u16},
+    Jump { nnn: u16 },
     // 2NNN, jump to subroutine at NNN (push address to stack, change pc)
-    Call{nnn: u16},
+    Call { nnn: u16 },
     // 3XNN, skip next instruction if Vx equals NN
-    SkipEqConst{x:u8, nn:u8},
+    SkipEqConst { x: u8, nn: u8 },
     // 4XNN, skip next instruction if Vx does not equal NN
-    SkipNeqConst{x:u8, nn:u8},
+    SkipNeqConst { x: u8, nn: u8 },
     // 5XY0, skips the next instruction if VX equals VY
-    SkipEq{x:u8, y:u8},
-    // 6XNN, Sets VX to NN. 
-    MovConst{x:u8, nn:u8},
+    SkipEq { x: u8, y: u8 },
+    // 6XNN, Sets VX to NN.
+    MovConst { x: u8, nn: u8 },
     // 7XNN, Adds NN to VX (carry flag is not changed)
-    AddConst{x:u8, nn:u8},
-    // 8XY0, Sets VX to the value of VY. 
-    Mov{x:u8, y:u8},
-    // 8XY1, Sets VX to VX or VY. (bitwise OR operation) 
-    Or{x:u8, y:u8},
-    // 8XY2, Sets VX to VX and VY. (bitwise AND operation) 
-    And{x:u8, y:u8},
+    AddConst { x: u8, nn: u8 },
+    // 8XY0, Sets VX to the value of VY.
+    Mov { x: u8, y: u8 },
+    // 8XY1, Sets VX to VX or VY. (bitwise OR operation)
+    Or { x: u8, y: u8 },
+    // 8XY2, Sets VX to VX and VY. (bitwise AND operation)
+    And { x: u8, y: u8 },
     // 8XY3, Sets VX to VX xor VY
-    Xor{x:u8, y:u8},
-    // 8XY4, Adds VY to VX. VF is set to 1 when there's a carry, and to 0 when there is not. 
-    Add{x:u8, y:u8},
-    // 8XY5, VY is subtracted from VX. VF is set to 0 when there's a borrow, and 1 when there is not. 
-    SubFrom{x:u8, y:u8},
+    Xor { x: u8, y: u8 },
+    // 8XY4, Adds VY to VX. VF is set to 1 when there's a carry, and to 0 when there is not.
+    Add { x: u8, y: u8 },
+    // 8XY5, VY is subtracted from VX. VF is set to 0 when there's a borrow, and 1 when there is not.
+    SubFrom { x: u8, y: u8 },
     // 8XY6, Stores the least significant bit of VX in VF and then shifts VX to the right by 1 (ambiguous see chip8 guide)
-    RightShift{x:u8, y:u8},
-    // 8XY7, Sets VX to VY minus VX. VF is set to 0 when there's a borrow, and 1 when there is not. 
-    Sub{x:u8, y:u8},
+    RightShift { x: u8, y: u8 },
+    // 8XY7, Sets VX to VY minus VX. VF is set to 0 when there's a borrow, and 1 when there is not.
+    Sub { x: u8, y: u8 },
     // 8XYE, Stores the most significant bit of VX in VF and then shifts VX to the left by 1
-    LeftShift{x:u8, y:u8},
+    LeftShift { x: u8, y: u8 },
     // 9XY0, Skips the next instruction if VX does not equal VY
-    SkipNeq{x:u8, y:u8},
+    SkipNeq { x: u8, y: u8 },
     // ANNN, Sets I to the address NNN
-    MovI{nnn:u16},
+    MovI { nnn: u16 },
     // BNNN, indexed jump, jump to NNN + V0
-    JumpIndexed{nnn: u16},
+    JumpIndexed { nnn: u16 },
     // CXNN, Sets VX to the result of a bitwise and operation on a random number (Typically: 0 to 255) and NN
-    Rand{x:u8, nn:u8},
+    Rand { x: u8, nn: u8 },
     // DXYN, Draws a sprite at coordinate (VX, VY) that has a width of 8 pixels and a height of N pixels. Each row of 8 pixels is read as bit-coded starting from memory location I; I value does not change after the execution of this instruction. VF will be set if a screen pixel was changed
-    DRAW{x:u8, y:u8, n:u8},
+    Draw { x: u8, y: u8, n: u8 },
     // EX9E, Skips the next instruction if the key stored in VX is pressed
-    SkipKeyEq{x:u8},
+    SkipKeyEq { x: u8 },
     // EXA1, Skips the next instruction if the key stored in VX is not pressed
-    SkipKeyNeq{x:u8},
+    SkipKeyNeq { x: u8 },
     // FX07, Sets VX to the value of the delay timer
-    GetDelayTimer{x:u8},
+    GetDelayTimer { x: u8 },
     // FX0A, A key press is awaited, and then stored in VX
-    WaitKey{x:u8},
+    WaitKey { x: u8 },
     // FX15, set delay timer to VX
-    SetDelayTimer{x:u8},
-    // FX18, Sets the sound timer to VX. 
-    SetSoundTimer{x:u8},
+    SetDelayTimer { x: u8 },
+    // FX18, Sets the sound timer to VX.
+    SetSoundTimer { x: u8 },
     // FX1E, Adds VX to I. VF is not affected.
-    AddI{x:u8},
+    AddI { x: u8 },
     // FX29, Sets I to the location of the sprite for the character in VX. Characters 0-F (in hexadecimal) are represented by a 4x5 font.
-    SetFontI{x:u8},
-    // FX33, Stores the binary-coded decimal representation of VX, with the hundreds digit in memory at location in I, the tens digit at location I+1, and the ones digit at location I+2. 
-    BCD{x:u8},
+    SetFontI { x: u8 },
+    // FX33, Stores the binary-coded decimal representation of VX, with the hundreds digit in memory at location in I, the tens digit at location I+1, and the ones digit at location I+2.
+    BCD { x: u8 },
     // FX55, Stores from V0 to VX (including VX) in memory, starting at address I. The offset from I is increased by 1 for each value written, but I itself is left unmodified.
-    RegDump{x:u8},
+    RegDump { x: u8 },
     // FX65, Fills from V0 to VX (including VX) with values from memory, starting at address I. The offset from I is increased by 1 for each value read, but I itself is left unmodified
-    RegLoad{x:u8},
+    RegLoad { x: u8 },
+}
+
+impl Instruction {
+    pub fn decode(op_code: u16) -> Instruction {
+        let nibbles = Instruction::code_to_nibble_array(op_code);
+
+        if nibbles[0] == 0 {
+            if nibbles[1] == 0 && nibbles[2] == 0xE && nibbles[3] == 0 {
+                return Instruction::Cls;
+            } else if nibbles[1] == 0 && nibbles[2] == 0xE && nibbles[3] == 0 {
+                return Instruction::Rts;
+            } else {
+                return Instruction::Invalid;
+            }
+        }
+
+        if nibbles[0] == 1 {
+            return Instruction::Jump {
+                nnn: Instruction::combine_nibbles(&nibbles[1..]),
+            };
+        }
+
+        if nibbles[0] == 2 {
+            return Instruction::Call {
+                nnn: Instruction::combine_nibbles(&nibbles[1..]),
+            };
+        }
+
+        if nibbles[0] == 3 {
+            return Instruction::SkipEqConst {
+                x: nibbles[1] as u8,
+                nn: Instruction::combine_nibbles(&nibbles[2..]) as u8,
+            };
+        }
+
+        if nibbles[0] == 4 {
+            return Instruction::SkipNeqConst {
+                x: nibbles[1] as u8,
+                nn: Instruction::combine_nibbles(&nibbles[2..]) as u8,
+            };
+        }
+
+        if nibbles[0] == 5 {
+            if nibbles[3] != 0 {
+                return Instruction::Invalid;
+            }
+
+            return Instruction::SkipEq {
+                x: nibbles[1] as u8,
+                y: nibbles[2] as u8,
+            };
+        }
+
+        if nibbles[0] == 6 {
+            return Instruction::MovConst {
+                x: nibbles[1] as u8,
+                nn: Instruction::combine_nibbles(&nibbles[2..]) as u8,
+            };
+        }
+
+        if nibbles[0] == 7 {
+            return Instruction::AddConst {
+                x: nibbles[1] as u8,
+                nn: Instruction::combine_nibbles(&nibbles[2..]) as u8,
+            };
+        }
+
+        if nibbles[0] == 8 {
+            let x = nibbles[1] as u8;
+            let y = nibbles[2] as u8;
+            if nibbles[3] == 0{
+                return  Instruction::Mov { x, y};
+            }
+
+            if nibbles[3] == 1 {
+                return Instruction::Or { x, y};
+            }
+
+            if nibbles[3] == 2 {
+                return Instruction::And { x, y};
+            }
+
+            if nibbles[3] == 3 {
+                return Instruction::Xor { x, y};
+            }
+
+            if nibbles[3] == 4 {
+                return Instruction::Add { x, y};
+            }
+
+            if nibbles[3] == 5 {
+                return Instruction::SubFrom { x, y};
+            }
+
+            if nibbles[3] == 6 {
+                return Instruction::RightShift { x, y};
+            }
+
+            if nibbles[3] == 7 {
+                return Instruction::Sub { x, y};
+            }
+
+            if nibbles[3] == 0xE {
+                return Instruction::LeftShift { x, y};
+            }
+        }
+
+        if nibbles[0] == 9{
+            if nibbles[3] == 0{
+                return Instruction::SkipNeq { x: nibbles[1] as u8, y: nibbles[2] as u8};
+            }
+        }
+
+        if nibbles[0] == 0xA{
+            return Instruction::MovI { nnn: Instruction::combine_nibbles(&nibbles[1..]) };
+        }
+
+        if nibbles[0] == 0xB{
+            return Instruction::JumpIndexed { nnn:  Instruction::combine_nibbles(&nibbles[1..])};
+        }
+
+        if nibbles[0] == 0xC{
+            return Instruction::Rand { x: nibbles[1] as u8, nn: Instruction::combine_nibbles(&nibbles[2..]) as u8 };
+        }
+
+        if nibbles[0] == 0xD{
+            return Instruction::Draw { x: nibbles[1] as u8, y: nibbles[2] as u8, n: nibbles[3] as u8 };
+        }
+
+        if nibbles[0] == 0xE{
+            let x = nibbles[1] as u8;
+            if nibbles[2] == 9 && nibbles[3] == 0xE{
+                return Instruction::SkipKeyEq { x };
+            }
+
+            if nibbles[2] == 0xA && nibbles[3] == 1{
+                return Instruction::SkipKeyNeq { x };
+            }
+        }
+
+        if nibbles[0] == 0xF{
+            let x = nibbles[1] as u8;
+            if nibbles[2] == 0 && nibbles[3] == 7{
+                return Instruction::GetDelayTimer { x };
+            } 
+
+            if nibbles[2] == 0 && nibbles[3] == 0xA{
+                return Instruction::WaitKey { x };
+            }
+
+            if nibbles[2] == 1 && nibbles[3] == 5{
+                return Instruction::SetDelayTimer { x };
+            }
+
+            if nibbles[2] == 1 && nibbles[3] == 8{
+                return Instruction::SetSoundTimer { x };
+            }
+
+            if nibbles[2] == 1 && nibbles[3] == 0xE{
+                return Instruction::AddI { x };
+            }
+
+            if nibbles[2] == 2 && nibbles[3] == 9{
+                return Instruction::SetFontI { x };
+            }
+
+            if nibbles[2] == 3 && nibbles[3] == 3{
+                return Instruction::BCD { x };
+            }
+
+            if nibbles[2] == 5 && nibbles[3] == 5{
+                return Instruction::RegDump { x };
+            }
+
+            if nibbles[2] == 6 && nibbles[3] == 5{
+                return Instruction::RegLoad { x };
+            }
+        }
+
+        return Instruction::Invalid;
+    }
+
+    fn code_to_nibble_array(op_code: u16) -> [u16; 4] {
+        [
+            (op_code & 0xF000) >> 12,
+            (op_code & 0x0F00) >> 8,
+            (op_code & 0x00F0) >> 4,
+            op_code & 0x000F,
+        ]
+    }
+
+    fn combine_nibbles(nibbles: &[u16]) -> u16 {
+        let mut combined = 0;
+        for (i, nibble) in nibbles.iter().enumerate() {
+            combined = combined | (*nibble << ((nibbles.len() - 1 - i) * 4));
+        }
+        combined
+    }
 }
