@@ -1,3 +1,4 @@
+use core::panic;
 use std::sync::{Arc, Mutex};
 
 const MEM_SIZE: usize = 0xFFF + 1; // 4KiB
@@ -221,8 +222,21 @@ impl Display for DisplayBuffer {
         // the sprite just XORs each bit with the corresponding display pixel
 
         for line in 0..n {
+            
             let line_bools = u8_to_bool_array(sprite[line as usize]);
+            //println!("\t{:?}", line_bools);
+            /*
+            line_bools.clone().map(|i| {
+                if i{
+                    print!("█");
+                } else {
+                    print!(" ");
+                }
+            });
 
+            println!("");
+            */
+            
             if (actual_y + line) as usize >= self.display_height {
                 // sprite should clip so we are finished
                 return result_flag;
@@ -263,13 +277,14 @@ impl Display for DisplayBuffer {
 
 impl State {
     pub fn new(
-        display: Arc<Mutex<dyn Display>>,
-        delay_timer: Arc<Mutex<dyn Timer>>,
-        sound_timer: Arc<Mutex<dyn Beeper>>,
-        keypad: Arc<Mutex<dyn Keypad>>,
+        display: Arc<Mutex<dyn Display + Send>>,
+        delay_timer: Arc<Mutex<dyn Timer + Send>>,
+        sound_timer: Arc<Mutex<dyn Beeper + Send>>,
+        keypad: Arc<Mutex<dyn Keypad + Send>>,
     ) -> Self {
+
         State {
-            memory: Vec::with_capacity(MEM_SIZE),
+            memory: vec![0; MEM_SIZE],
             pc: 0,
             index_reg: 0,
             stack: Vec::new(),
@@ -284,8 +299,9 @@ impl State {
     pub fn initialize(&mut self, program: &[u8], font: &[u8]) {
         // load program into memory
         for i in 0..program.len() {
-            self.memory[PROGRAM_START + 1] = program[i];
+            self.memory[PROGRAM_START + i] = program[i];
         }
+
         self.pc = PROGRAM_START;
 
         for i in 0..font.len() {
@@ -295,81 +311,53 @@ impl State {
 
     // execute the next instruction located at pc
     pub fn execute(&mut self) {
-        // fetch
+        // fetch, chip8 uses big endian
         let upper = self.memory[self.pc];
-        let lower = self.memory[self.pc + 1];
+        let lower = self.memory[self.pc+1];
 
+        let instruction = (upper as u16) << 8 | (lower as u16);
         // keep in mind that the pc is incremented here, important for some instructions
         self.pc += 2;
 
+        //println!("{:#06x}", instruction);
         // Decode
-        // split the opcode into the relevant parts
+        let instruction  = Instruction::decode(instruction);
 
-        let op_code = (upper & 0xF0) >> 4;
-        // X: second nibble of instruction. Used to look up one of the 16 registers
-        // Y: third nibble of instruction. Used to look up one of the 16 registers
-        // N: The *fourth* nibble
-        // NN: second byte, immediate 8-bit number
-        // NNN: second, third and fourth nibble, immediate 12-bit address
-        let x = upper & 0x0F;
-        let y = (lower & 0xF0) >> 4;
-        let n = lower & 0x0F;
-        let nn = lower;
-        let nnn: usize = 0 | (lower as usize) | ((x as usize) << 8);
+        //println!("{:?}", instruction);
+        
 
-        // ... tomorrow
-        match op_code {
-            // this instructino does not need to be implemented
-            0x0 => {}
-            0x1 => {}
-            0x2 => {}
-            0x3 => {}
-            0x4 => {}
-            0x5 => {}
-            0x6 => {}
-            0x7 => {}
-            0x8 => {}
-            0x9 => {}
-            0xa => {}
-            0xb => {}
-            0xc => {}
-            0xd => {}
-            0xe => {}
-            0xf => {}
-            _ => panic!("FUUUUUUCK (unknown instruction)"),
+        match instruction {
+            Instruction::Cls => self.display.lock().unwrap().clear(),
+            Instruction::Jump{nnn} => self.pc = nnn as usize,
+            Instruction::MovConst { x, nn } => self.gp_registers[x as usize] = nn,
+            Instruction::AddConst { x, nn } => self.gp_registers[x as usize] += nn,
+            Instruction::MovI { nnn } => self.index_reg = nnn,
+            Instruction::Draw { x, y, n } => {
+                let res = self.display.lock().unwrap().modify(&self.memory[(self.index_reg as usize)..((self.index_reg+(n as u16)) as usize)], n, self.gp_registers[x as usize], self.gp_registers[y as usize]);
+                if res{
+                    self.gp_registers[0xF] = 1;
+                } else {
+                    self.gp_registers[0xF] = 0;
+                }
+            },
+            _ =>{
+                println!("{:#04x} {:#04x}", upper, lower);
+                panic!("Not yet implemented");
+            } 
         }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-
-    #[test]
-    fn u8_to_bool_test() {
-        let byte: u8 = 0b10110011;
-        let array = u8_to_bool_array(byte);
-        assert_eq!(array, [true, false, true, true, false, false, true, true]);
-        let byte: u8 = 0b00000000;
-        let array = u8_to_bool_array(byte);
-        assert_eq!(
-            array,
-            [false, false, false, false, false, false, false, false]
-        );
-        let byte: u8 = 0b11111111;
-        let array = u8_to_bool_array(byte);
-        assert_eq!(array, [true, true, true, true, true, true, true, true]);
-    }
-}
 
 // Mnemonics are (mostly) taken from: http://www.emulator101.com/chip-8-instruction-set.html
 // also https://en.wikipedia.org/wiki/CHIP-8
+// X: second nibble of instruction. Used to look up one of the 16 registers
+// Y: third nibble of instruction. Used to look up one of the 16 registers
+// N: The *fourth* nibble
+// NN: second byte, immediate 8-bit number
+// NNN: second, third and fourth nibble, immediate 12-bit address
+#[derive(Debug)]
 enum Instruction {
     // 0NNN, Instruction 0NNN calls a machine code routine (RCA 1802 for COSMAC VIP), I won't implement this instruction
     // use Invalid for this Instruction
@@ -451,7 +439,7 @@ impl Instruction {
         if nibbles[0] == 0 {
             if nibbles[1] == 0 && nibbles[2] == 0xE && nibbles[3] == 0 {
                 return Instruction::Cls;
-            } else if nibbles[1] == 0 && nibbles[2] == 0xE && nibbles[3] == 0 {
+            } else if nibbles[1] == 0 && nibbles[2] == 0xE && nibbles[3] == 0xE {
                 return Instruction::Rts;
             } else {
                 return Instruction::Invalid;
@@ -512,111 +500,125 @@ impl Instruction {
         if nibbles[0] == 8 {
             let x = nibbles[1] as u8;
             let y = nibbles[2] as u8;
-            if nibbles[3] == 0{
-                return  Instruction::Mov { x, y};
+            if nibbles[3] == 0 {
+                return Instruction::Mov { x, y };
             }
 
             if nibbles[3] == 1 {
-                return Instruction::Or { x, y};
+                return Instruction::Or { x, y };
             }
 
             if nibbles[3] == 2 {
-                return Instruction::And { x, y};
+                return Instruction::And { x, y };
             }
 
             if nibbles[3] == 3 {
-                return Instruction::Xor { x, y};
+                return Instruction::Xor { x, y };
             }
 
             if nibbles[3] == 4 {
-                return Instruction::Add { x, y};
+                return Instruction::Add { x, y };
             }
 
             if nibbles[3] == 5 {
-                return Instruction::SubFrom { x, y};
+                return Instruction::SubFrom { x, y };
             }
 
             if nibbles[3] == 6 {
-                return Instruction::RightShift { x, y};
+                return Instruction::RightShift { x, y };
             }
 
             if nibbles[3] == 7 {
-                return Instruction::Sub { x, y};
+                return Instruction::Sub { x, y };
             }
 
             if nibbles[3] == 0xE {
-                return Instruction::LeftShift { x, y};
+                return Instruction::LeftShift { x, y };
             }
         }
 
-        if nibbles[0] == 9{
-            if nibbles[3] == 0{
-                return Instruction::SkipNeq { x: nibbles[1] as u8, y: nibbles[2] as u8};
+        if nibbles[0] == 9 {
+            if nibbles[3] == 0 {
+                return Instruction::SkipNeq {
+                    x: nibbles[1] as u8,
+                    y: nibbles[2] as u8,
+                };
             }
         }
 
-        if nibbles[0] == 0xA{
-            return Instruction::MovI { nnn: Instruction::combine_nibbles(&nibbles[1..]) };
+        if nibbles[0] == 0xA {
+            return Instruction::MovI {
+                nnn: Instruction::combine_nibbles(&nibbles[1..]),
+            };
         }
 
-        if nibbles[0] == 0xB{
-            return Instruction::JumpIndexed { nnn:  Instruction::combine_nibbles(&nibbles[1..])};
+        if nibbles[0] == 0xB {
+            return Instruction::JumpIndexed {
+                nnn: Instruction::combine_nibbles(&nibbles[1..]),
+            };
         }
 
-        if nibbles[0] == 0xC{
-            return Instruction::Rand { x: nibbles[1] as u8, nn: Instruction::combine_nibbles(&nibbles[2..]) as u8 };
+        if nibbles[0] == 0xC {
+            return Instruction::Rand {
+                x: nibbles[1] as u8,
+                nn: Instruction::combine_nibbles(&nibbles[2..]) as u8,
+            };
         }
 
-        if nibbles[0] == 0xD{
-            return Instruction::Draw { x: nibbles[1] as u8, y: nibbles[2] as u8, n: nibbles[3] as u8 };
+        if nibbles[0] == 0xD {
+            return Instruction::Draw {
+                x: nibbles[1] as u8,
+                y: nibbles[2] as u8,
+                n: nibbles[3] as u8,
+            };
         }
 
-        if nibbles[0] == 0xE{
+        if nibbles[0] == 0xE {
             let x = nibbles[1] as u8;
-            if nibbles[2] == 9 && nibbles[3] == 0xE{
+            if nibbles[2] == 9 && nibbles[3] == 0xE {
                 return Instruction::SkipKeyEq { x };
             }
 
-            if nibbles[2] == 0xA && nibbles[3] == 1{
+            if nibbles[2] == 0xA && nibbles[3] == 1 {
                 return Instruction::SkipKeyNeq { x };
             }
         }
 
-        if nibbles[0] == 0xF{
+        if nibbles[0] == 0xF {
             let x = nibbles[1] as u8;
-            if nibbles[2] == 0 && nibbles[3] == 7{
+            if nibbles[2] == 0 && nibbles[3] == 7 {
                 return Instruction::GetDelayTimer { x };
-            } 
+            }
 
-            if nibbles[2] == 0 && nibbles[3] == 0xA{
+            if nibbles[2] == 0 && nibbles[3] == 0xA {
                 return Instruction::WaitKey { x };
             }
 
-            if nibbles[2] == 1 && nibbles[3] == 5{
+            if nibbles[2] == 1 && nibbles[3] == 5 {
                 return Instruction::SetDelayTimer { x };
             }
 
-            if nibbles[2] == 1 && nibbles[3] == 8{
+            if nibbles[2] == 1 && nibbles[3] == 8 {
                 return Instruction::SetSoundTimer { x };
             }
 
-            if nibbles[2] == 1 && nibbles[3] == 0xE{
+            if nibbles[2] == 1 && nibbles[3] == 0xE {
                 return Instruction::AddI { x };
             }
 
-            if nibbles[2] == 2 && nibbles[3] == 9{
+            if nibbles[2] == 2 && nibbles[3] == 9 {
                 return Instruction::SetFontI { x };
             }
 
-            if nibbles[2] == 3 && nibbles[3] == 3{
+            if nibbles[2] == 3 && nibbles[3] == 3 {
                 return Instruction::BCD { x };
             }
 
-            if nibbles[2] == 5 && nibbles[3] == 5{
+            if nibbles[2] == 5 && nibbles[3] == 5 {
                 return Instruction::RegDump { x };
             }
 
-            if nibbles[2] == 6 && nibbles[3] == 5{
+            if nibbles[2] == 6 && nibbles[3] == 5 {
                 return Instruction::RegLoad { x };
             }
         }
@@ -640,4 +642,33 @@ impl Instruction {
         }
         combined
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn it_works() {
+        let result = add(2, 2);
+        assert_eq!(result, 4);
+    }
+
+    #[test]
+    fn u8_to_bool_test() {
+        let byte: u8 = 0b10110011;
+        let array = u8_to_bool_array(byte);
+        assert_eq!(array, [true, false, true, true, false, false, true, true]);
+        let byte: u8 = 0b00000000;
+        let array = u8_to_bool_array(byte);
+        assert_eq!(
+            array,
+            [false, false, false, false, false, false, false, false]
+        );
+        let byte: u8 = 0b11111111;
+        let array = u8_to_bool_array(byte);
+        assert_eq!(array, [true, true, true, true, true, true, true, true]);
+    }
+
+    
 }
