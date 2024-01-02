@@ -5,6 +5,7 @@ const MEM_SIZE: usize = 0xFFF + 1; // 4KiB
 
 // it is apparently popular to put the font at 050–09F ... so I will do that as well
 const FONT_START: usize = 0x50;
+const FONT_CHARACTER_BYTES: usize = 5;
 
 // for compability with older programs
 const PROGRAM_START: usize = 0x200;
@@ -94,9 +95,11 @@ pub struct State {
     // u16 should be enough for the usual 4k, but usize should be better for indexing the memory vector
     pc: usize,
     index_reg: u16,
-    stack: Vec<u16>,
+    stack: Vec<usize>,
     // the 16 general purpose registers
     gp_registers: [u8; 16],
+
+    rng: RngWrapper,
 
     display: Arc<Mutex<dyn Display>>,
     delay_timer: Arc<Mutex<dyn Timer>>,
@@ -104,6 +107,21 @@ pub struct State {
     keypad: Arc<Mutex<dyn Keypad>>,
 }
 
+// wrapper for rng, rand does not work (easily?) with wasm.
+// TODO support different generators depending on platform
+struct RngWrapper {
+    generator: rand::rngs::ThreadRng,
+}
+
+impl RngWrapper{
+    fn new() -> Self{
+        Self{generator: rand::thread_rng()}
+    }
+
+    fn generate_random_byte(&mut self) -> u8{
+        rand::Rng::gen(&mut self.generator)
+    }
+}
 // Some mock structs for testing and debugging
 // ----------------------------------------------------------------
 pub struct DebugDisplay {
@@ -236,7 +254,7 @@ impl Display for DisplayBuffer {
 
             println!("");
             */
-            
+
             if (actual_y + line) as usize >= self.display_height {
                 // sprite should clip so we are finished
                 return result_flag;
@@ -289,6 +307,7 @@ impl State {
             index_reg: 0,
             stack: Vec::new(),
             gp_registers: [0; 16],
+            rng: RngWrapper::new(),
             display,
             delay_timer,
             sound_timer,
@@ -328,10 +347,78 @@ impl State {
 
         match instruction {
             Instruction::Cls => self.display.lock().unwrap().clear(),
+            Instruction::Rts => self.pc = self.stack.pop().unwrap(),
             Instruction::Jump{nnn} => self.pc = nnn as usize,
+            Instruction::Call { nnn } => {
+                self.stack.push(self.pc);
+                self.pc = nnn as usize;
+            },
+            Instruction::SkipEqConst { x, nn } => if self.gp_registers[x as usize] == nn {self.pc += 2;},
+            Instruction::SkipNeqConst { x, nn } => if self.gp_registers[x as usize] != nn {self.pc += 2;},
+            Instruction::SkipEq { x, y } => if self.gp_registers[x as usize] == self.gp_registers[y as usize] {self.pc += 2},
             Instruction::MovConst { x, nn } => self.gp_registers[x as usize] = nn,
-            Instruction::AddConst { x, nn } => self.gp_registers[x as usize] += nn,
+            Instruction::AddConst { x, nn } => self.gp_registers[x as usize] = (self.gp_registers[x as usize] as u16 + nn as u16) as u8, // properly handle overflow, as u8 should truncate
+            Instruction::Mov { x, y } => self.gp_registers[x as usize] = self.gp_registers[y as usize],
+            Instruction::Or { x, y } => self.gp_registers[x as usize] = self.gp_registers[x as usize] | self.gp_registers[y as usize] as u8,
+            Instruction::And { x, y } => self.gp_registers[x as usize] &= self.gp_registers[y as usize],
+            Instruction::Xor { x, y } => self.gp_registers[x as usize] ^= self.gp_registers[y as usize],
+            Instruction::Add { x, y } => {
+                let sum = self.gp_registers[x as usize] as u16 + self.gp_registers[y as usize] as u16;
+                if sum > 0xFF{
+                    self.gp_registers[0xF] = 1;
+                } else {
+                    self.gp_registers[0xF] = 0;
+                }
+                self.gp_registers[x as usize] = sum as u8;
+            },
+            Instruction::SubXY { x, y } => {
+                let x_val:u8 = self.gp_registers[x as usize];
+                let y_val:u8 = self.gp_registers[y as usize];
+
+
+                if x_val > y_val{
+                    self.gp_registers[0xF] = 1;
+                    self.gp_registers[x as usize] = x_val - y_val;
+                } else {
+                    self.gp_registers[0xF] = 0;
+                    // TODO: check if this is the right behavior
+                    self.gp_registers[x as usize] = 0xFF - (y_val - x_val);
+                }
+            },
+            Instruction::RightShift { x, y: _ } => {
+                self.gp_registers[0xF] = self.gp_registers[x as usize] & 0x01;
+                self.gp_registers[x as usize] = self.gp_registers[x as usize] >> 1;
+            },
+            Instruction::SubYX { x, y } =>{
+                let x_val:u8 = self.gp_registers[x as usize];
+                let y_val:u8 = self.gp_registers[y as usize];
+
+
+                if y_val > x_val{
+                    self.gp_registers[0xF] = 1;
+                    self.gp_registers[x as usize] = y_val - x_val;
+                } else {
+                    self.gp_registers[0xF] = 0;
+                    // TODO: check if this is the right behavior
+                    self.gp_registers[x as usize] = 0xFF - (x_val - y_val);
+                    
+                }
+            },
+            Instruction::LeftShift { x, y: _ } => {
+                self.gp_registers[0xF] = self.gp_registers[x as usize] & 0x80;
+                self.gp_registers[x as usize] = self.gp_registers[x as usize] << 1;
+            },
+            Instruction::SkipNeq { x, y } => {
+                if self.gp_registers[x as usize] != self.gp_registers[y as usize] {
+                    self.pc += 2;
+                }
+            },
             Instruction::MovI { nnn } => self.index_reg = nnn,
+            Instruction::JumpIndexed { nnn } => self.pc = nnn as usize + self.gp_registers[0] as usize,
+            
+            // TODO: Rand, implement own rng, so that it is easier to compile to wasm later (rand is for some reason not wasm compatible? Better: just use wbg_rand)
+            Instruction::Rand { x, nn } => self.gp_registers[x as usize] = self.rng.generate_random_byte() & nn,
+
             Instruction::Draw { x, y, n } => {
                 let res = self.display.lock().unwrap().modify(&self.memory[(self.index_reg as usize)..((self.index_reg+(n as u16)) as usize)], n, self.gp_registers[x as usize], self.gp_registers[y as usize]);
                 if res{
@@ -340,7 +427,62 @@ impl State {
                     self.gp_registers[0xF] = 0;
                 }
             },
-            _ =>{
+
+            Instruction::SkipKeyEq { x } => {
+                let key = self.keypad.lock().unwrap().get_pressed_key();
+                if let Some(k) = key {
+                    if k == self.gp_registers[x as usize]{
+                        self.pc += 2;
+                    }
+                }
+            },
+
+            Instruction::SkipKeyNeq { x } => {
+                let key = self.keypad.lock().unwrap().get_pressed_key();
+                if key.is_none() {
+                    self.pc += 2;
+                } else if let Some(k) = key {
+                    if k != self.gp_registers[x as usize] {
+                        self.pc += 2;
+                    }
+                }
+            }
+            Instruction::GetDelayTimer { x } => self.gp_registers[x as usize] = self.delay_timer.lock().unwrap().get(),
+            // just reexecutes the instruction if no key was pressed
+            Instruction::WaitKey { x } => {
+                let key = self.keypad.lock().unwrap().get_pressed_key();
+                if let Some(k) = key {
+                    self.gp_registers[x as usize] = k;
+                } else {
+                    self.pc -= 2;
+                }
+            },
+            Instruction::SetDelayTimer { x } => self.delay_timer.lock().unwrap().set(self.gp_registers[x as usize]),
+            Instruction::SetSoundTimer { x } => self.sound_timer.lock().unwrap().start(self.gp_registers[x as usize]),
+            Instruction::AddI { x } => self.index_reg = (self.index_reg + self.gp_registers[x as usize] as u16) & 0x0FFF,
+            // just consider the lower nibble of the register
+            Instruction::SetFontI { x } => self.index_reg = (FONT_START + FONT_CHARACTER_BYTES * (self.gp_registers[x as usize] & 0x0F) as usize) as u16,
+            Instruction::BCD { x } => {
+                let mut x_val = self.gp_registers[x as usize];
+                self.memory[((self.index_reg + 2) & 0x0FFF) as usize] = x_val % 10;
+                x_val /= 10;
+                self.memory[(self.index_reg + 1 & 0x0FFF) as usize] = x_val % 10;
+                x_val /= 10;
+                self.memory[self.index_reg as usize] = x_val;
+                
+            },
+            Instruction::RegDump { x } => {
+                for i in 0..=(x as usize){
+                    self.memory[(self.index_reg as usize + i ) & 0x0FFF] = self.gp_registers[i];
+                }
+            },
+            Instruction::RegLoad { x } => {
+                for i in 0..=(x as usize){
+                    self.gp_registers[i] = self.memory[(self.index_reg as usize + i ) & 0x0FFF];
+                }
+            },
+
+            Instruction::Invalid =>{
                 println!("{:#04x} {:#04x}", upper, lower);
                 panic!("Not yet implemented");
             } 
@@ -358,7 +500,7 @@ impl State {
 // NN: second byte, immediate 8-bit number
 // NNN: second, third and fourth nibble, immediate 12-bit address
 #[derive(Debug)]
-enum Instruction {
+pub enum Instruction {
     // 0NNN, Instruction 0NNN calls a machine code routine (RCA 1802 for COSMAC VIP), I won't implement this instruction
     // use Invalid for this Instruction
     Invalid,
@@ -391,18 +533,18 @@ enum Instruction {
     // 8XY4, Adds VY to VX. VF is set to 1 when there's a carry, and to 0 when there is not.
     Add { x: u8, y: u8 },
     // 8XY5, VY is subtracted from VX. VF is set to 0 when there's a borrow, and 1 when there is not.
-    SubFrom { x: u8, y: u8 },
+    SubXY { x: u8, y: u8 },
     // 8XY6, Stores the least significant bit of VX in VF and then shifts VX to the right by 1 (ambiguous see chip8 guide)
     RightShift { x: u8, y: u8 },
     // 8XY7, Sets VX to VY minus VX. VF is set to 0 when there's a borrow, and 1 when there is not.
-    Sub { x: u8, y: u8 },
+    SubYX { x: u8, y: u8 },
     // 8XYE, Stores the most significant bit of VX in VF and then shifts VX to the left by 1
     LeftShift { x: u8, y: u8 },
     // 9XY0, Skips the next instruction if VX does not equal VY
     SkipNeq { x: u8, y: u8 },
     // ANNN, Sets I to the address NNN
     MovI { nnn: u16 },
-    // BNNN, indexed jump, jump to NNN + V0
+    // BNNN, indexed jump, jump to NNN + V0, Ambiguous 
     JumpIndexed { nnn: u16 },
     // CXNN, Sets VX to the result of a bitwise and operation on a random number (Typically: 0 to 255) and NN
     Rand { x: u8, nn: u8 },
@@ -521,7 +663,7 @@ impl Instruction {
             }
 
             if nibbles[3] == 5 {
-                return Instruction::SubFrom { x, y };
+                return Instruction::SubXY { x, y };
             }
 
             if nibbles[3] == 6 {
@@ -529,7 +671,7 @@ impl Instruction {
             }
 
             if nibbles[3] == 7 {
-                return Instruction::Sub { x, y };
+                return Instruction::SubYX { x, y };
             }
 
             if nibbles[3] == 0xE {
