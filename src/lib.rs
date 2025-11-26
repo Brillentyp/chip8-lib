@@ -406,9 +406,11 @@ impl State {
                     self.gp_registers[0xF] = 0;
                 }
             }
-            Instruction::RightShift { x, y: _ } => {
-                self.gp_registers[0xF] = self.gp_registers[x as usize] & 0x01;
-                self.gp_registers[x as usize] = self.gp_registers[x as usize] >> 1;
+            Instruction::RightShift { x, y } => {
+                // This instruction is ambiguous
+                let carry = self.gp_registers[y as usize] & 0x01;
+                self.gp_registers[x as usize] = self.gp_registers[y as usize] >> 1;
+                self.gp_registers[0xF] = carry;
             }
             Instruction::SubYX { x, y } => {
                 let x_val: u8 = self.gp_registers[x as usize];
@@ -421,9 +423,11 @@ impl State {
                     self.gp_registers[0xF] = 0;
                 }
             }
-            Instruction::LeftShift { x, y: _ } => {
-                self.gp_registers[0xF] = self.gp_registers[x as usize] & 0x80;
-                self.gp_registers[x as usize] = self.gp_registers[x as usize] << 1;
+            Instruction::LeftShift { x, y } => {
+                // This instruction is ambiguous
+                let carry = self.gp_registers[y as usize] >> 7;
+                self.gp_registers[x as usize] = self.gp_registers[y as usize] << 1;
+                self.gp_registers[0xF] = carry;
             }
             Instruction::SkipNeq { x, y } => {
                 if self.gp_registers[x as usize] != self.gp_registers[y as usize] {
