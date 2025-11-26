@@ -113,12 +113,14 @@ struct RngWrapper {
     generator: rand::rngs::ThreadRng,
 }
 
-impl RngWrapper{
-    fn new() -> Self{
-        Self{generator: rand::thread_rng()}
+impl RngWrapper {
+    fn new() -> Self {
+        Self {
+            generator: rand::thread_rng(),
+        }
     }
 
-    fn generate_random_byte(&mut self) -> u8{
+    fn generate_random_byte(&mut self) -> u8 {
         rand::Rng::gen(&mut self.generator)
     }
 }
@@ -240,7 +242,6 @@ impl Display for DisplayBuffer {
         // the sprite just XORs each bit with the corresponding display pixel
 
         for line in 0..n {
-            
             let line_bools = u8_to_bool_array(sprite[line as usize]);
             //println!("\t{:?}", line_bools);
             /*
@@ -270,7 +271,7 @@ impl Display for DisplayBuffer {
                     self.display[index] = self.display[index] != *b;
 
                     // if the bit was set a pixel was flipped
-                    if *b  && old{
+                    if *b && old {
                         result_flag = true;
                     }
                 }
@@ -300,7 +301,6 @@ impl State {
         sound_timer: Arc<Mutex<dyn Beeper + Send>>,
         keypad: Arc<Mutex<dyn Keypad + Send>>,
     ) -> Self {
-
         State {
             memory: vec![0; MEM_SIZE],
             pc: 0,
@@ -332,7 +332,7 @@ impl State {
     pub fn execute(&mut self) {
         // fetch, chip8 uses big endian
         let upper = self.memory[self.pc];
-        let lower = self.memory[self.pc+1];
+        let lower = self.memory[self.pc + 1];
 
         let instruction = (upper as u16) << 8 | (lower as u16);
         // keep in mind that the pc is incremented here, important for some instructions
@@ -340,43 +340,66 @@ impl State {
 
         //println!("{:#06x}", instruction);
         // Decode
-        let instruction  = Instruction::decode(instruction);
+        let instruction = Instruction::decode(instruction);
 
         //println!("{:?}", instruction);
-        
 
         match instruction {
             Instruction::Cls => self.display.lock().unwrap().clear(),
             Instruction::Rts => self.pc = self.stack.pop().unwrap(),
-            Instruction::Jump{nnn} => self.pc = nnn as usize,
+            Instruction::Jump { nnn } => self.pc = nnn as usize,
             Instruction::Call { nnn } => {
                 self.stack.push(self.pc);
                 self.pc = nnn as usize;
-            },
-            Instruction::SkipEqConst { x, nn } => if self.gp_registers[x as usize] == nn {self.pc += 2;},
-            Instruction::SkipNeqConst { x, nn } => if self.gp_registers[x as usize] != nn {self.pc += 2;},
-            Instruction::SkipEq { x, y } => if self.gp_registers[x as usize] == self.gp_registers[y as usize] {self.pc += 2},
+            }
+            Instruction::SkipEqConst { x, nn } => {
+                if self.gp_registers[x as usize] == nn {
+                    self.pc += 2;
+                }
+            }
+            Instruction::SkipNeqConst { x, nn } => {
+                if self.gp_registers[x as usize] != nn {
+                    self.pc += 2;
+                }
+            }
+            Instruction::SkipEq { x, y } => {
+                if self.gp_registers[x as usize] == self.gp_registers[y as usize] {
+                    self.pc += 2
+                }
+            }
             Instruction::MovConst { x, nn } => self.gp_registers[x as usize] = nn,
-            Instruction::AddConst { x, nn } => self.gp_registers[x as usize] = (self.gp_registers[x as usize] as u16 + nn as u16) as u8, // properly handle overflow, as u8 should truncate
-            Instruction::Mov { x, y } => self.gp_registers[x as usize] = self.gp_registers[y as usize],
-            Instruction::Or { x, y } => self.gp_registers[x as usize] = self.gp_registers[x as usize] | self.gp_registers[y as usize] as u8,
-            Instruction::And { x, y } => self.gp_registers[x as usize] &= self.gp_registers[y as usize],
-            Instruction::Xor { x, y } => self.gp_registers[x as usize] ^= self.gp_registers[y as usize],
+            Instruction::AddConst { x, nn } => {
+                self.gp_registers[x as usize] =
+                    (self.gp_registers[x as usize] as u16 + nn as u16) as u8
+            } // properly handle overflow, as u8 should truncate
+            Instruction::Mov { x, y } => {
+                self.gp_registers[x as usize] = self.gp_registers[y as usize]
+            }
+            Instruction::Or { x, y } => {
+                self.gp_registers[x as usize] =
+                    self.gp_registers[x as usize] | self.gp_registers[y as usize] as u8
+            }
+            Instruction::And { x, y } => {
+                self.gp_registers[x as usize] &= self.gp_registers[y as usize]
+            }
+            Instruction::Xor { x, y } => {
+                self.gp_registers[x as usize] ^= self.gp_registers[y as usize]
+            }
             Instruction::Add { x, y } => {
-                let sum = self.gp_registers[x as usize] as u16 + self.gp_registers[y as usize] as u16;
-                if sum > 0xFF{
+                let sum =
+                    self.gp_registers[x as usize] as u16 + self.gp_registers[y as usize] as u16;
+                if sum > 0xFF {
                     self.gp_registers[0xF] = 1;
                 } else {
                     self.gp_registers[0xF] = 0;
                 }
                 self.gp_registers[x as usize] = sum as u8;
-            },
+            }
             Instruction::SubXY { x, y } => {
-                let x_val:u8 = self.gp_registers[x as usize];
-                let y_val:u8 = self.gp_registers[y as usize];
+                let x_val: u8 = self.gp_registers[x as usize];
+                let y_val: u8 = self.gp_registers[y as usize];
 
-
-                if x_val > y_val{
+                if x_val > y_val {
                     self.gp_registers[0xF] = 1;
                     self.gp_registers[x as usize] = x_val - y_val;
                 } else {
@@ -384,58 +407,66 @@ impl State {
                     // TODO: check if this is the right behavior
                     self.gp_registers[x as usize] = 0xFF - (y_val - x_val);
                 }
-            },
+            }
             Instruction::RightShift { x, y: _ } => {
                 self.gp_registers[0xF] = self.gp_registers[x as usize] & 0x01;
                 self.gp_registers[x as usize] = self.gp_registers[x as usize] >> 1;
-            },
-            Instruction::SubYX { x, y } =>{
-                let x_val:u8 = self.gp_registers[x as usize];
-                let y_val:u8 = self.gp_registers[y as usize];
+            }
+            Instruction::SubYX { x, y } => {
+                let x_val: u8 = self.gp_registers[x as usize];
+                let y_val: u8 = self.gp_registers[y as usize];
 
-
-                if y_val > x_val{
+                if y_val > x_val {
                     self.gp_registers[0xF] = 1;
                     self.gp_registers[x as usize] = y_val - x_val;
                 } else {
                     self.gp_registers[0xF] = 0;
                     // TODO: check if this is the right behavior
                     self.gp_registers[x as usize] = 0xFF - (x_val - y_val);
-                    
                 }
-            },
+            }
             Instruction::LeftShift { x, y: _ } => {
                 self.gp_registers[0xF] = self.gp_registers[x as usize] & 0x80;
                 self.gp_registers[x as usize] = self.gp_registers[x as usize] << 1;
-            },
+            }
             Instruction::SkipNeq { x, y } => {
                 if self.gp_registers[x as usize] != self.gp_registers[y as usize] {
                     self.pc += 2;
                 }
-            },
+            }
             Instruction::MovI { nnn } => self.index_reg = nnn,
-            Instruction::JumpIndexed { nnn } => self.pc = nnn as usize + self.gp_registers[0] as usize,
-            
+            Instruction::JumpIndexed { nnn } => {
+                self.pc = nnn as usize + self.gp_registers[0] as usize
+            }
+
             // TODO: Rand, implement own rng, so that it is easier to compile to wasm later (rand is for some reason not wasm compatible? Better: just use wbg_rand)
-            Instruction::Rand { x, nn } => self.gp_registers[x as usize] = self.rng.generate_random_byte() & nn,
+            Instruction::Rand { x, nn } => {
+                self.gp_registers[x as usize] = self.rng.generate_random_byte() & nn
+            }
 
             Instruction::Draw { x, y, n } => {
-                let res = self.display.lock().unwrap().modify(&self.memory[(self.index_reg as usize)..((self.index_reg+(n as u16)) as usize)], n, self.gp_registers[x as usize], self.gp_registers[y as usize]);
-                if res{
+                let res = self.display.lock().unwrap().modify(
+                    &self.memory
+                        [(self.index_reg as usize)..((self.index_reg + (n as u16)) as usize)],
+                    n,
+                    self.gp_registers[x as usize],
+                    self.gp_registers[y as usize],
+                );
+                if res {
                     self.gp_registers[0xF] = 1;
                 } else {
                     self.gp_registers[0xF] = 0;
                 }
-            },
+            }
 
             Instruction::SkipKeyEq { x } => {
                 let key = self.keypad.lock().unwrap().get_pressed_key();
                 if let Some(k) = key {
-                    if k == self.gp_registers[x as usize]{
+                    if k == self.gp_registers[x as usize] {
                         self.pc += 2;
                     }
                 }
-            },
+            }
 
             Instruction::SkipKeyNeq { x } => {
                 let key = self.keypad.lock().unwrap().get_pressed_key();
@@ -447,7 +478,9 @@ impl State {
                     }
                 }
             }
-            Instruction::GetDelayTimer { x } => self.gp_registers[x as usize] = self.delay_timer.lock().unwrap().get(),
+            Instruction::GetDelayTimer { x } => {
+                self.gp_registers[x as usize] = self.delay_timer.lock().unwrap().get()
+            }
             // just reexecutes the instruction if no key was pressed
             Instruction::WaitKey { x } => {
                 let key = self.keypad.lock().unwrap().get_pressed_key();
@@ -456,12 +489,26 @@ impl State {
                 } else {
                     self.pc -= 2;
                 }
-            },
-            Instruction::SetDelayTimer { x } => self.delay_timer.lock().unwrap().set(self.gp_registers[x as usize]),
-            Instruction::SetSoundTimer { x } => self.sound_timer.lock().unwrap().start(self.gp_registers[x as usize]),
-            Instruction::AddI { x } => self.index_reg = (self.index_reg + self.gp_registers[x as usize] as u16) & 0x0FFF,
+            }
+            Instruction::SetDelayTimer { x } => self
+                .delay_timer
+                .lock()
+                .unwrap()
+                .set(self.gp_registers[x as usize]),
+            Instruction::SetSoundTimer { x } => self
+                .sound_timer
+                .lock()
+                .unwrap()
+                .start(self.gp_registers[x as usize]),
+            Instruction::AddI { x } => {
+                self.index_reg = (self.index_reg + self.gp_registers[x as usize] as u16) & 0x0FFF
+            }
             // just consider the lower nibble of the register
-            Instruction::SetFontI { x } => self.index_reg = (FONT_START + FONT_CHARACTER_BYTES * (self.gp_registers[x as usize] & 0x0F) as usize) as u16,
+            Instruction::SetFontI { x } => {
+                self.index_reg = (FONT_START
+                    + FONT_CHARACTER_BYTES * (self.gp_registers[x as usize] & 0x0F) as usize)
+                    as u16
+            }
             Instruction::BCD { x } => {
                 let mut x_val = self.gp_registers[x as usize];
                 self.memory[((self.index_reg + 2) & 0x0FFF) as usize] = x_val % 10;
@@ -469,28 +516,25 @@ impl State {
                 self.memory[(self.index_reg + 1 & 0x0FFF) as usize] = x_val % 10;
                 x_val /= 10;
                 self.memory[self.index_reg as usize] = x_val;
-                
-            },
+            }
             Instruction::RegDump { x } => {
-                for i in 0..=(x as usize){
-                    self.memory[(self.index_reg as usize + i ) & 0x0FFF] = self.gp_registers[i];
+                for i in 0..=(x as usize) {
+                    self.memory[(self.index_reg as usize + i) & 0x0FFF] = self.gp_registers[i];
                 }
-            },
+            }
             Instruction::RegLoad { x } => {
-                for i in 0..=(x as usize){
-                    self.gp_registers[i] = self.memory[(self.index_reg as usize + i ) & 0x0FFF];
+                for i in 0..=(x as usize) {
+                    self.gp_registers[i] = self.memory[(self.index_reg as usize + i) & 0x0FFF];
                 }
-            },
+            }
 
-            Instruction::Invalid =>{
+            Instruction::Invalid => {
                 println!("{:#04x} {:#04x}", upper, lower);
-                panic!("Not yet implemented");
-            } 
+                panic!("Illegal Instruction {:#04x} {:#04x}", upper, lower);
+            }
         }
     }
 }
-
-
 
 // Mnemonics are (mostly) taken from: http://www.emulator101.com/chip-8-instruction-set.html
 // also https://en.wikipedia.org/wiki/CHIP-8
@@ -544,7 +588,7 @@ pub enum Instruction {
     SkipNeq { x: u8, y: u8 },
     // ANNN, Sets I to the address NNN
     MovI { nnn: u16 },
-    // BNNN, indexed jump, jump to NNN + V0, Ambiguous 
+    // BNNN, indexed jump, jump to NNN + V0, Ambiguous
     JumpIndexed { nnn: u16 },
     // CXNN, Sets VX to the result of a bitwise and operation on a random number (Typically: 0 to 255) and NN
     Rand { x: u8, nn: u8 },
@@ -811,6 +855,4 @@ mod tests {
         let array = u8_to_bool_array(byte);
         assert_eq!(array, [true, true, true, true, true, true, true, true]);
     }
-
-    
 }
