@@ -399,12 +399,12 @@ impl State {
                 let x_val: u8 = self.gp_registers[x as usize];
                 let y_val: u8 = self.gp_registers[y as usize];
 
-                if x_val > y_val {
+                self.gp_registers[x as usize] = x_val.wrapping_sub(y_val);
+                if x_val >= y_val {
                     self.gp_registers[0xF] = 1;
                 } else {
                     self.gp_registers[0xF] = 0;
                 }
-                self.gp_registers[x as usize] = x_val.wrapping_sub(y_val);
             }
             Instruction::RightShift { x, y: _ } => {
                 self.gp_registers[0xF] = self.gp_registers[x as usize] & 0x01;
@@ -414,12 +414,12 @@ impl State {
                 let x_val: u8 = self.gp_registers[x as usize];
                 let y_val: u8 = self.gp_registers[y as usize];
 
+                self.gp_registers[x as usize] = y_val.wrapping_sub(x_val);
                 if y_val >= x_val {
                     self.gp_registers[0xF] = 1;
                 } else {
                     self.gp_registers[0xF] = 0;
                 }
-                self.gp_registers[x as usize] = y_val.wrapping_sub(x_val);
             }
             Instruction::LeftShift { x, y: _ } => {
                 self.gp_registers[0xF] = self.gp_registers[x as usize] & 0x80;
