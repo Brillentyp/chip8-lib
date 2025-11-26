@@ -388,12 +388,12 @@ impl State {
             Instruction::Add { x, y } => {
                 let sum =
                     self.gp_registers[x as usize] as u16 + self.gp_registers[y as usize] as u16;
+                self.gp_registers[x as usize] = sum as u8;
                 if sum > 0xFF {
                     self.gp_registers[0xF] = 1;
                 } else {
                     self.gp_registers[0xF] = 0;
                 }
-                self.gp_registers[x as usize] = sum as u8;
             }
             Instruction::SubXY { x, y } => {
                 let x_val: u8 = self.gp_registers[x as usize];
